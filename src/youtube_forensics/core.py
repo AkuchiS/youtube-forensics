@@ -381,7 +381,9 @@ def build_receipt(
     files: dict[str, str] = {}
     for path in sorted(output.rglob("*")):
         if path.is_file() and path.name != "receipt.json" and not path.is_symlink():
-            files[str(path.relative_to(output))] = sha256_file(path)
+            # Receipts are portable evidence, so always encode manifest paths
+            # with POSIX separators even when the job was produced on Windows.
+            files[path.relative_to(output).as_posix()] = sha256_file(path)
     receipt = {
         "schema": f"{SCHEMA_VERSION}.receipt",
         "status": "EVIDENCE_READY_HUMAN_OR_AGENT_REVIEW_REQUIRED",
@@ -440,7 +442,13 @@ def verify_job(output: Path) -> dict[str, Any]:
             problems.append("invalid manifest entry")
             continue
         pure = PurePosixPath(relative)
-        if pure.is_absolute() or not pure.parts or ".." in pure.parts or "" in pure.parts:
+        if (
+            "\\" in relative
+            or pure.is_absolute()
+            or not pure.parts
+            or ".." in pure.parts
+            or "" in pure.parts
+        ):
             problems.append(f"unsafe artifact path: {relative}")
             continue
         path = output.joinpath(*pure.parts)
@@ -459,7 +467,7 @@ def verify_job(output: Path) -> dict[str, Any]:
         elif sha256_file(path) != expected:
             problems.append(f"artifact hash mismatch: {relative}")
     actual = {
-        str(path.relative_to(output))
+        path.relative_to(output).as_posix()
         for path in output.rglob("*")
         if path.name != "receipt.json" and (path.is_file() or path.is_symlink())
     }
@@ -472,7 +480,7 @@ def verify_job(output: Path) -> dict[str, Any]:
         if str(parent) != "."
     }
     actual_dirs = {
-        str(path.relative_to(output))
+        path.relative_to(output).as_posix()
         for path in output.rglob("*")
         if path.is_dir() and not path.is_symlink()
     }

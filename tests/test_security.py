@@ -58,7 +58,9 @@ def test_verifier_rejects_symlinked_receipt(tmp_path: Path) -> None:
     assert result["problems"] == ["invalid receipt: symlink"]
 
 
-@pytest.mark.parametrize("hostile", ["../outside.txt", "/tmp/outside.txt", "a/../../outside"])
+@pytest.mark.parametrize(
+    "hostile", ["../outside.txt", "/tmp/outside.txt", "a/../../outside", "a\\outside.txt"]
+)
 def test_verifier_rejects_hostile_manifest_paths(tmp_path: Path, hostile: str) -> None:
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("outside", encoding="utf-8")
@@ -78,6 +80,18 @@ def test_verifier_rejects_symlink(tmp_path: Path) -> None:
     result = verify_job(tmp_path)
     assert result["verified"] is False
     assert "unexpected artifact: link.txt" in result["problems"]
+
+
+def test_receipt_manifest_uses_portable_paths(tmp_path: Path) -> None:
+    nested = tmp_path / "nested" / "artifact.txt"
+    nested.parent.mkdir()
+    nested.write_text("portable", encoding="utf-8")
+    receipt = build_receipt(
+        tmp_path, input_value="local", network_used=False, acquisition=None, video=None
+    )
+    assert "nested/artifact.txt" in receipt["files"]
+    assert all("\\" not in relative for relative in receipt["files"])
+    assert verify_job(tmp_path)["verified"] is True
 
 
 @pytest.mark.parametrize("body", ["null", "[]", "not-json"])
