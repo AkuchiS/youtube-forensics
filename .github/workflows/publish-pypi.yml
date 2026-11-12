@@ -2,33 +2,88 @@ name: Publish to PyPI
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable GitHub prerelease tag to publish
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build:
-    name: build signed distribution candidate
+  stage:
+    name: verify immutable GitHub release assets
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.11"
-          cache: pip
-      - run: |
-          python -m pip install '.[test]'
-          python -m pytest -q
-          python -m ruff check .
-          python -m build
+      - name: Download exact immutable GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*-*) ;;
+            *) echo "Refusing non-prerelease tag: $TAG" >&2; exit 2 ;;
+          esac
+          metadata="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isImmutable,isPrerelease)"
+          jq -e --arg tag "$TAG" \
+            '.tagName == $tag and .isDraft == false and .isImmutable == true and .isPrerelease == true' \
+            <<<"$metadata"
+          tag_object="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          tag_sha="$(jq -r .object.sha <<<"$tag_object")"
+          if [ "$(jq -r .object.type <<<"$tag_object")" = tag ]; then
+            tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq .object.sha)"
+          fi
+          ancestry="$(gh api "repos/$GITHUB_REPOSITORY/compare/$TAG...main" --jq .status)"
+          case "$ancestry" in
+            ahead|identical) ;;
+            *) echo "Release tag is not an ancestor of main: $ancestry" >&2; exit 2 ;;
+          esac
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --commit "$tag_sha" \
+            --json conclusion,headSha --limit 20 \
+            | jq -e --arg sha "$tag_sha" \
+              'any(.[]; .headSha == $sha and .conclusion == "success")'
+          mkdir dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist \
+            --pattern '*.whl' --pattern '*.tar.gz' --pattern SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import email
+          import glob
+          import os
+          import tarfile
+          import zipfile
+
+          tag = os.environ["TAG"].removeprefix("v")
+          expected = tag.replace("-alpha.", "a").replace("-beta.", "b").replace("-rc.", "rc")
+          wheels = glob.glob("dist/*.whl")
+          sdists = glob.glob("dist/*.tar.gz")
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit("Expected exactly one wheel and one source distribution")
+          with zipfile.ZipFile(wheels[0]) as archive:
+              metadata_name = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+              wheel_metadata = email.message_from_bytes(archive.read(metadata_name))
+          with tarfile.open(sdists[0], "r:gz") as archive:
+              pkg_info = next(member for member in archive.getmembers() if member.name.endswith("/PKG-INFO"))
+              source_metadata = email.message_from_binary_file(archive.extractfile(pkg_info))
+          versions = {wheel_metadata["Version"], source_metadata["Version"]}
+          if versions != {expected}:
+              raise SystemExit(f"Distribution versions {versions!r} do not match tag {expected!r}")
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: python-package-distributions
-          path: dist/
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
 
   publish:
     name: publish with PyPI Trusted Publishing
-    needs: build
+    needs: stage
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: pypi

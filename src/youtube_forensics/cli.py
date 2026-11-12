@@ -1,21 +1,45 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from . import __version__
 from .core import analyse_local_video, atomic_json, build_receipt, prepare_output, verify_job
-from .youtube import collect_youtube, extract_video_id, transcribe_local
+from .youtube import canonical_youtube_url, collect_youtube, transcribe_local
 
 
-def _is_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+def _require_free_space(path: Path, minimum_gib: float) -> None:
+    free_gib = shutil.disk_usage(path).free / 1024**3
+    if free_gib < minimum_gib:
+        raise RuntimeError(f"Only {free_gib:.2f} GiB free; {minimum_gib:.2f} GiB is required")
+
+
+def _failure_details(exc: BaseException, input_value: str, output: Path) -> tuple[str, str]:
+    """Return useful failure text without disclosing owner filesystem paths."""
+    source = Path(input_value).expanduser()
+    safe_input = input_value
+    with contextlib.suppress(ValueError):
+        safe_input = canonical_youtube_url(input_value)
+    if safe_input == input_value:
+        safe_input = source.name or "local-input"
+
+    error = str(exc)
+    replacements = {
+        str(output.resolve()): "<output>",
+        str(output): "<output>",
+        str(source.resolve()): source.name or "<local-input>",
+        str(source): source.name or "<local-input>",
+        input_value: safe_input,
+    }
+    for original, replacement in sorted(replacements.items(), key=lambda item: -len(item[0])):
+        if original:
+            error = error.replace(original, replacement)
+    return safe_input, error
 
 
 def analyse(args: argparse.Namespace) -> int:
@@ -27,18 +51,15 @@ def analyse(args: argparse.Namespace) -> int:
         local_candidate = Path(args.input).expanduser()
         youtube_input: str | None = None
         if not local_candidate.is_file():
-            try:
-                video_id = extract_video_id(args.input)
-                youtube_input = (
-                    args.input
-                    if _is_url(args.input)
-                    else f"https://www.youtube.com/watch?v={video_id}"
-                )
-            except ValueError:
-                pass
+            with contextlib.suppress(ValueError):
+                youtube_input = canonical_youtube_url(args.input)
 
         if args.resume and youtube_input:
             raise ValueError("--resume currently accepts owner-supplied local video only")
+        initial_free_gib = args.min_free_gib + (
+            args.max_source_gib if youtube_input and args.download else 0
+        )
+        _require_free_space(output, initial_free_gib)
         if youtube_input:
             acquisition = collect_youtube(
                 youtube_input,
@@ -53,19 +74,21 @@ def analyse(args: argparse.Namespace) -> int:
             )
             network_used = True
             if acquisition.get("media_path"):
-                media = Path(acquisition["media_path"])
+                relative_media = Path(acquisition["media_path"])
+                if relative_media.is_absolute() or ".." in relative_media.parts:
+                    raise ValueError("Acquisition returned an unsafe media path")
+                media = output / relative_media
         else:
+            if local_candidate.is_symlink():
+                raise ValueError("Local source must not be a symlink")
             media = local_candidate.resolve()
             if not media.is_file():
                 raise ValueError(f"Input is neither a URL nor a file: {args.input}")
             if media.stat().st_size > args.max_source_gib * 1024**3:
                 raise ValueError(f"Local source exceeds {args.max_source_gib} GiB limit")
 
-        free_gib = shutil.disk_usage(output).free / 1024**3
-        if free_gib < args.min_free_gib:
-            raise RuntimeError(
-                f"Only {free_gib:.2f} GiB free; {args.min_free_gib:.2f} GiB is required"
-            )
+        # A fragmented remote download can consume the reserve after admission.
+        _require_free_space(output, args.min_free_gib)
 
         video = None
         if media:
@@ -76,16 +99,26 @@ def analyse(args: argparse.Namespace) -> int:
                 minimum_gap_seconds=args.minimum_gap,
                 resume=args.resume,
                 checkpoint_interval=args.checkpoint_interval,
+                min_free_bytes=int(args.min_free_gib * 1024**3),
             )
             if args.local_asr:
-                asr = transcribe_local(media, output, args.asr_model)
+                asr = transcribe_local(
+                    media,
+                    output,
+                    args.asr_model,
+                    allow_model_download=args.allow_asr_model_download,
+                )
                 video["local_asr"] = asr
+                network_used = network_used or args.allow_asr_model_download
+                _require_free_space(output, args.min_free_gib)
         elif args.download:
             raise RuntimeError("Download was requested but no media file was produced")
 
+        # A prior interrupted-run marker is not part of successful evidence.
+        (output / "failure.json").unlink(missing_ok=True)
         receipt = build_receipt(
             output,
-            input_value=args.input,
+            input_value=youtube_input or media.name,
             network_used=network_used,
             acquisition=acquisition,
             video=video,
@@ -97,14 +130,15 @@ def analyse(args: argparse.Namespace) -> int:
         )
         return 0
     except (OSError, ValueError, RuntimeError) as exc:
+        safe_input, safe_error = _failure_details(exc, args.input, output)
         atomic_json(
             output / "failure.json",
             {
                 "schema": "youtube-forensics.failure/v1",
                 "status": "FAILED",
-                "input": args.input,
+                "input": safe_input,
                 "error_type": type(exc).__name__,
-                "error": str(exc),
+                "error": safe_error,
                 "recorded_at": datetime.now(UTC).isoformat(),
                 "resumable": (
                     (output / ".frame-index.partial.jsonl").is_file()
@@ -148,6 +182,11 @@ def parser() -> argparse.ArgumentParser:
     )
     run.add_argument(
         "--asr-model", default="small.en", help="faster-whisper model used with --local-asr"
+    )
+    run.add_argument(
+        "--allow-asr-model-download",
+        action="store_true",
+        help="Allow faster-whisper to fetch a missing model; otherwise ASR is cache/local-only",
     )
     run.add_argument(
         "--resume", action="store_true", help="Resume a checkpointed owner-supplied local-video job"

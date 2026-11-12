@@ -32,6 +32,8 @@ def test_video_analysis_and_tamper_detection(tmp_path: Path) -> None:
     job = tmp_path / "job"
     job.mkdir()
     result = analyse_local_video(source, job)
+    assert result["source_name"] == "source.mp4"
+    assert "source_path" not in result
     assert result["frame_count"] == 4
     assert result["retained_state_count"] >= 2
     receipt = build_receipt(

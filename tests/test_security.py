@@ -76,10 +76,31 @@ def test_verifier_rejects_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("outside", encoding="utf-8")
     (tmp_path / "link.txt").symlink_to(outside)
-    build_receipt(tmp_path, input_value="local", network_used=False, acquisition=None, video=None)
-    result = verify_job(tmp_path)
-    assert result["verified"] is False
-    assert "unexpected artifact: link.txt" in result["problems"]
+    with pytest.raises(ValueError, match="unsafe receipt artifact"):
+        build_receipt(
+            tmp_path, input_value="local", network_used=False, acquisition=None, video=None
+        )
+
+
+def test_receipt_builder_rejects_symlinked_directory(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-directory"
+    outside.mkdir()
+    (tmp_path / "linked-directory").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="unsafe receipt artifact"):
+        build_receipt(
+            tmp_path, input_value="local", network_used=False, acquisition=None, video=None
+        )
+
+
+def test_nested_receipt_filename_is_manifested(tmp_path: Path) -> None:
+    nested = tmp_path / "retained-frames" / "receipt.json"
+    nested.parent.mkdir()
+    nested.write_text("evidence", encoding="utf-8")
+    receipt = build_receipt(
+        tmp_path, input_value="local", network_used=False, acquisition=None, video=None
+    )
+    assert "retained-frames/receipt.json" in receipt["files"]
+    assert verify_job(tmp_path)["verified"] is True
 
 
 def test_receipt_manifest_uses_portable_paths(tmp_path: Path) -> None:
@@ -128,6 +149,25 @@ def test_prepare_output_rejects_symlink_checkpoint(tmp_path: Path) -> None:
     (job / ".frame-checkpoint.json").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="symlinks"):
         prepare_output(job, resume=True)
+
+
+def test_prepare_output_rejects_symlink_root(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "job"
+    link.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        prepare_output(link, resume=True)
+
+
+def test_verifier_rejects_symlink_root(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "job"
+    link.symlink_to(target, target_is_directory=True)
+    result = verify_job(link)
+    assert result["verified"] is False
+    assert result["problems"] == ["invalid output: symlink"]
 
 
 def test_atomic_json_leaves_valid_complete_file(tmp_path: Path) -> None:

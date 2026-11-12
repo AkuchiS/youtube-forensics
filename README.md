@@ -24,7 +24,7 @@ It can:
   inferred, reproduced and unknown claims.
 
 Version `0.1.0a1` is an **alpha**. Its deterministic local path is covered by a
-43-test suite on Linux, macOS and Windows CI. Public YouTube captions, comments
+cross-platform test suite on Linux, macOS and Windows CI. Public YouTube captions, comments
 and formats remain provider-dependent; acquisition failures are explicit rather
 than silently treated as complete evidence.
 
@@ -51,7 +51,7 @@ uv tool install --from . youtube-forensics
 Install the released source directly from GitHub:
 
 ```bash
-uv tool install 'git+https://github.com/AkuchiS/youtube-forensics.git'
+uv tool install 'git+https://github.com/AkuchiS/youtube-forensics.git@v0.1.0-alpha.1'
 ```
 
 ## Use
@@ -92,6 +92,9 @@ youtube-forensics analyse VIDEO_ID --output jobs/example --download \
   --network-timeout 20 --retries 3 \
   --max-source-gib 20 --max-duration 21600 --min-free-gib 2
 ```
+
+For remote downloads, admission reserves `--max-source-gib` in addition to
+`--min-free-gib`; lower the source ceiling deliberately for smaller systems.
 
 Output directories must be new or empty. The tool never overwrites an existing
 evidence package. `--resume` admits only the tool's narrow checkpoint shape and
@@ -137,13 +140,15 @@ to `failure.json`; they never masquerade as completed receipts.
 
 - Every local frame is decoded; retained JPEGs are state-change evidence, not a
   claim that no meaning exists between them.
-- Network requests use bounded timeouts/retries, downloaded sources have size and
-  duration limits, and jobs enforce a free-space reserve.
+- Network requests use bounded timeouts/retries, downloaded sources have aggregate
+  size and duration limits, and frame analysis checks its free-space reserve before writing each
+  retained JPEG.
 - Captions and comments are sanitized, bounded and classified as unverified.
 - No browser-cookie or account session is read.
 - Optional ASR is local but model output still requires source checking.
-- A valid receipt proves artifact integrity after creation, not the truth of a
-  caption, comment or interpretation.
+- A valid receipt detects changed, missing or added artifacts relative to that
+  receipt. It is unsigned: someone who can rewrite the package can regenerate
+  it, so preserve the receipt hash or sign it separately when authenticity matters.
 - Hidden source, prompts, credentials, omitted edits and private backend behaviour
   remain unknown unless independently documented or reproduced.
 

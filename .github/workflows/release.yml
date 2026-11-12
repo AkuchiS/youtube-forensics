@@ -5,14 +5,25 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: build and publish GitHub prerelease
+  build:
+    name: test and build immutable candidate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require tag commit to be on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_REF_NAME...main" --jq .status)"
+          case "$status" in
+            ahead|identical) ;;
+            *) echo "Tag commit is not an ancestor of main: $status" >&2; exit 2 ;;
+          esac
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
@@ -27,6 +38,28 @@ jobs:
           (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
       - name: Require reviewed release notes
         run: test -s "docs/releases/$GITHUB_REF_NAME.md"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: github-release-distributions
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: publish GitHub prerelease
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: github-release-distributions
+          path: dist/
+      - name: Verify exact build output
+        run: (cd dist && sha256sum -c SHA256SUMS)
       - name: Create immutable GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}

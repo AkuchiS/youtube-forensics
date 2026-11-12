@@ -4,6 +4,8 @@ import hashlib
 import json
 import math
 import os
+import re
+import shutil
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -12,6 +14,8 @@ import av
 
 SCHEMA_VERSION = "youtube-forensics/v1"
 CLAIM_CLASSES = ("OBSERVED", "DOCUMENTED", "INFERRED", "REPRODUCED", "UNKNOWN")
+FRAME_NAME_RE = re.compile(r"frame-(\d{8})\.jpg")
+PARTIAL_FRAME_RE = re.compile(r"\.frame-(\d{8})\.partial\.jpg")
 
 
 def canonical(value: Any) -> bytes:
@@ -52,7 +56,10 @@ def atomic_json(path: Path, value: Any) -> None:
 
 
 def ensure_new_output(path: Path) -> Path:
-    path = Path(path).expanduser().resolve()
+    unresolved = Path(path).expanduser()
+    if unresolved.is_symlink():
+        raise ValueError(f"Output must not be a symlink: {unresolved}")
+    path = unresolved.resolve()
     if path.exists() and (not path.is_dir() or any(path.iterdir())):
         raise ValueError(f"Output must be absent or empty: {path}")
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -61,7 +68,10 @@ def ensure_new_output(path: Path) -> Path:
 
 def prepare_output(path: Path, *, resume: bool = False) -> Path:
     """Create a job directory or admit a narrowly defined interrupted local job."""
-    path = Path(path).expanduser().resolve()
+    unresolved = Path(path).expanduser()
+    if unresolved.is_symlink():
+        raise ValueError(f"Resume output must not be a symlink: {unresolved}")
+    path = unresolved.resolve()
     if not resume:
         return ensure_new_output(path)
     if not path.is_dir():
@@ -72,9 +82,21 @@ def prepare_output(path: Path, *, resume: bool = False) -> Path:
         "failure.json",
         "retained-frames",
     }
-    unexpected = sorted(item.name for item in path.iterdir() if item.name not in allowed)
+    stale_temps = []
+    for item in path.iterdir():
+        if item.name.startswith(
+            (".frame-checkpoint.json.", ".failure.json.")
+        ) and item.name.endswith(".tmp"):
+            if item.is_symlink() or not item.is_file():
+                raise ValueError("Resume directory has an unsafe interrupted-write artifact")
+            stale_temps.append(item)
+    unexpected = sorted(
+        item.name for item in path.iterdir() if item.name not in allowed and item not in stale_temps
+    )
     if unexpected:
         raise ValueError(f"Resume directory has non-checkpoint artifacts: {', '.join(unexpected)}")
+    for item in stale_temps:
+        item.unlink()
     if not (path / ".frame-index.partial.jsonl").is_file():
         raise ValueError("Resume directory has no partial frame index")
     if not (path / ".frame-checkpoint.json").is_file():
@@ -143,6 +165,43 @@ def _frame_seconds(
     return float(index), True
 
 
+def _validate_partial_index(
+    path: Path,
+    *,
+    offset: int,
+    next_index: int,
+    source_digest: str,
+    threshold: float,
+    minimum_gap_seconds: float,
+    last_row: dict[str, Any],
+) -> None:
+    with path.open("rb") as handle:
+        prefix = handle.read(offset)
+    if len(prefix) != offset or not prefix.endswith(b"\n"):
+        raise ValueError("Checkpoint partial index is truncated")
+    try:
+        values = [json.loads(line) for line in prefix.decode("utf-8").splitlines()]
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Checkpoint partial index is malformed") from exc
+    if not values or not isinstance(values[0], dict):
+        raise ValueError("Checkpoint partial index metadata is malformed")
+    metadata = values[0]
+    if (
+        metadata.get("schema") != "youtube-forensics.frame-index/v1"
+        or metadata.get("source_sha256") != source_digest
+        or metadata.get("threshold") != threshold
+        or metadata.get("minimum_gap_seconds") != minimum_gap_seconds
+    ):
+        raise ValueError("Checkpoint partial index metadata does not match")
+    rows = values[1:]
+    if len(rows) != next_index or any(
+        not isinstance(row, dict) or row.get("frame") != index for index, row in enumerate(rows)
+    ):
+        raise ValueError("Checkpoint partial index rows are inconsistent")
+    if not rows or any(rows[-1].get(key) != last_row.get(key) for key in last_row):
+        raise ValueError("Checkpoint partial index last row does not match")
+
+
 def analyse_local_video(
     source: Path,
     output: Path,
@@ -151,11 +210,20 @@ def analyse_local_video(
     minimum_gap_seconds: float = 0.35,
     resume: bool = False,
     checkpoint_interval: int = 250,
+    min_free_bytes: int = 0,
 ) -> dict[str, Any]:
-    source = Path(source).expanduser().resolve()
-    if not source.is_file() or source.is_symlink():
+    unresolved_source = Path(source).expanduser()
+    if unresolved_source.is_symlink():
         raise ValueError("Source must be a regular non-symlink file")
-    if not 0 <= threshold <= 1 or minimum_gap_seconds < 0 or checkpoint_interval < 1:
+    source = unresolved_source.resolve()
+    if not source.is_file():
+        raise ValueError("Source must be a regular non-symlink file")
+    if (
+        not 0 <= threshold <= 1
+        or minimum_gap_seconds < 0
+        or checkpoint_interval < 1
+        or min_free_bytes < 0
+    ):
         raise ValueError("Invalid state-retention parameters")
 
     output = Path(output)
@@ -184,7 +252,7 @@ def analyse_local_video(
     average_rate = float(stream.average_rate) if stream.average_rate else None
     metadata = {
         "schema": "youtube-forensics.frame-index/v1",
-        "source_path": str(source),
+        "source_name": source.name,
         "source_sha256": source_digest,
         "source_bytes": source_before.st_size,
         "video_stream": {
@@ -200,6 +268,8 @@ def analyse_local_video(
 
     if resume:
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        if not isinstance(checkpoint, dict):
+            raise ValueError("Frame checkpoint must be an object")
         expected = {
             "source_sha256": source_digest,
             "threshold": threshold,
@@ -233,6 +303,33 @@ def analyse_local_video(
             image_path = output.joinpath(*pure.parts)
             if not image_path.is_file() or image_path.is_symlink():
                 raise ValueError("Checkpoint references a missing retained frame")
+            if (
+                not isinstance(item.get("frame"), int)
+                or item["frame"] < 0
+                or not isinstance(item.get("pts_seconds"), (int, float))
+                or not isinstance(item.get("perceptual_hash"), str)
+            ):
+                raise ValueError("Checkpoint retained state is malformed")
+        expected_frames = {PurePosixPath(item["image"]).name for item in retained}
+        for path in frames_dir.iterdir():
+            if path.name in expected_frames:
+                continue
+            frame_match = FRAME_NAME_RE.fullmatch(path.name)
+            partial_match = PARTIAL_FRAME_RE.fullmatch(path.name)
+            recoverable = (
+                not path.is_symlink()
+                and path.is_file()
+                and (
+                    (frame_match is not None and int(frame_match.group(1)) >= next_index - 1)
+                    or (partial_match is not None and int(partial_match.group(1)) >= next_index - 1)
+                )
+            )
+            if not recoverable:
+                raise ValueError("Resume retained-frames contains an unrelated artifact")
+            path.unlink()
+        actual_frames = {path.name for path in frames_dir.iterdir() if path.is_file()}
+        if actual_frames != expected_frames:
+            raise ValueError("Resume retained-frames does not match checkpoint")
         previous_hash = checkpoint.get("previous_hash")
         last_retained_seconds = checkpoint.get("last_retained_seconds")
         last_row = checkpoint.get("last_row")
@@ -244,6 +341,22 @@ def analyse_local_video(
             or not isinstance(inferred_pts_count, int)
         ):
             raise ValueError("Checkpoint state is malformed")
+        if (
+            not isinstance(last_row.get("frame"), int)
+            or last_row["frame"] != next_index - 1
+            or not isinstance(last_row.get("pts_seconds"), (int, float))
+            or not isinstance(last_row.get("perceptual_hash"), str)
+        ):
+            raise ValueError("Checkpoint last row is malformed")
+        _validate_partial_index(
+            index_partial,
+            offset=index_offset,
+            next_index=next_index,
+            source_digest=source_digest,
+            threshold=threshold,
+            minimum_gap_seconds=minimum_gap_seconds,
+            last_row=last_row,
+        )
         index_handle = index_partial.open("r+b")
         if index_offset > index_partial.stat().st_size:
             index_handle.close()
@@ -296,6 +409,8 @@ def analyse_local_video(
                 change >= threshold and seconds - last_retained_seconds >= minimum_gap_seconds
             )
             if should_retain:
+                if min_free_bytes and shutil.disk_usage(output).free < min_free_bytes:
+                    raise RuntimeError("Free-space reserve reached during frame analysis")
                 image_name = f"frame-{index:08d}.jpg"
                 _write_jpeg(frame, frames_dir / image_name)
                 retained.append({**row, "image": f"retained-frames/{image_name}"})
@@ -354,7 +469,7 @@ def analyse_local_video(
         },
     )
     result = {
-        "source_path": str(source),
+        "source_name": source.name,
         "source_sha256": source_digest,
         "source_bytes": source_before.st_size,
         "frame_count": completion["frame_count"],
@@ -380,10 +495,18 @@ def build_receipt(
     output = Path(output)
     files: dict[str, str] = {}
     for path in sorted(output.rglob("*")):
-        if path.is_file() and path.name != "receipt.json" and not path.is_symlink():
-            # Receipts are portable evidence, so always encode manifest paths
-            # with POSIX separators even when the job was produced on Windows.
-            files[path.relative_to(output).as_posix()] = sha256_file(path)
+        if path == output / "receipt.json":
+            continue
+        relative = path.relative_to(output).as_posix()
+        if path.is_symlink():
+            raise ValueError(f"Refusing unsafe receipt artifact: {relative}")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise ValueError(f"Refusing unsafe receipt artifact: {relative}")
+        # Receipts are portable evidence, so always encode manifest paths
+        # with POSIX separators even when the job was produced on Windows.
+        files[relative] = sha256_file(path)
     receipt = {
         "schema": f"{SCHEMA_VERSION}.receipt",
         "status": "EVIDENCE_READY_HUMAN_OR_AGENT_REVIEW_REQUIRED",
@@ -407,7 +530,10 @@ def build_receipt(
 
 
 def verify_job(output: Path) -> dict[str, Any]:
-    output = Path(output).expanduser().resolve()
+    unresolved = Path(output).expanduser()
+    if unresolved.is_symlink():
+        return {"verified": False, "problems": ["invalid output: symlink"], "artifact_count": 0}
+    output = unresolved.resolve()
     receipt_path = output / "receipt.json"
     problems: list[str] = []
     if receipt_path.is_symlink():
@@ -469,7 +595,7 @@ def verify_job(output: Path) -> dict[str, Any]:
     actual = {
         path.relative_to(output).as_posix()
         for path in output.rglob("*")
-        if path.name != "receipt.json" and (path.is_file() or path.is_symlink())
+        if path != receipt_path and (path.is_file() or path.is_symlink())
     }
     for relative in sorted(actual - safe_manifest):
         problems.append(f"unexpected artifact: {relative}")
