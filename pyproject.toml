@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "youtube-forensics"
+version = "0.1.0"
+description = "Turn permitted YouTube videos into hash-bound reconstruction evidence."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Jay Christian"}]
+dependencies = [
+  "av>=14",
+  "yt-dlp>=2025.1.15",
+]
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.1"]
+test = ["numpy>=1.26", "pytest>=8"]
+
+[project.scripts]
+youtube-forensics = "youtube_forensics.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/youtube_forensics"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
