@@ -1,0 +1,25 @@
+name: Feature proposal
+description: Propose one bounded, testable capability.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What evidence or reconstruction problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Safety and rights boundary
+      description: Explain content permission, privacy, network and implementation limits.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance test
+    validations:
+      required: true

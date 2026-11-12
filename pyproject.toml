@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "youtube-forensics"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Turn permitted YouTube videos into hash-bound reconstruction evidence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 asr = ["faster-whisper>=1.1"]
-test = ["numpy>=1.26", "pytest>=8"]
+test = ["build>=1.2", "numpy>=1.26", "pytest>=8", "ruff>=0.9"]
 
 [project.scripts]
 youtube-forensics = "youtube_forensics.cli:main"
@@ -27,3 +27,10 @@ packages = ["src/youtube_forensics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

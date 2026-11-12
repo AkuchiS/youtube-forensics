@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">YouTube Forensics workflow demo</title>
+  <desc id="desc">A permitted video becomes frame evidence, sanitized context and a verified receipt.</desc>
+  <rect width="1200" height="675" rx="24" fill="#07111f"/>
+  <text x="64" y="72" fill="#f6fbff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="750">One command. Citable evidence. Verifiable receipt.</text>
+  <g transform="translate(64 112)" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">
+    <rect width="1072" height="118" rx="15" fill="#0d1b2a" stroke="#273b50"/>
+    <circle cx="26" cy="25" r="6" fill="#ff6b6b"/><circle cx="46" cy="25" r="6" fill="#ffd166"/><circle cx="66" cy="25" r="6" fill="#58e4c2"/>
+    <text x="26" y="64" fill="#8cf4d9" font-size="20">$ youtube-forensics analyse permitted.mp4 \\</text>
+    <text x="52" y="94" fill="#d3dfeb" font-size="20">--output evidence/job-001</text>
+  </g>
+  <g transform="translate(64 270)" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+    <rect width="310" height="300" rx="18" fill="#0d1b2a" stroke="#29445e"/>
+    <text x="28" y="45" fill="#69a8ff" font-size="22" font-weight="700">1 · OBSERVE</text>
+    <text x="28" y="88" fill="#d3dfeb" font-size="20">Decode every frame</text>
+    <text x="28" y="122" fill="#d3dfeb" font-size="20">Preserve timestamps</text>
+    <text x="28" y="156" fill="#d3dfeb" font-size="20">Retain state changes</text>
+    <text x="28" y="190" fill="#d3dfeb" font-size="20">Sanitize public context</text>
+    <path d="M30 242h246" stroke="#243b50" stroke-width="2"/>
+    <text x="28" y="272" fill="#849bb1" font-size="17">No browser cookies</text>
+  </g>
+  <path d="M394 420h58" stroke="#58e4c2" stroke-width="5" stroke-linecap="round"/><path d="m441 407 16 13-16 13" fill="none" stroke="#58e4c2" stroke-width="5"/>
+  <g transform="translate(476 270)" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+    <rect width="310" height="300" rx="18" fill="#0d1b2a" stroke="#29445e"/>
+    <text x="28" y="45" fill="#a996ff" font-size="22" font-weight="700">2 · BIND</text>
+    <text x="28" y="88" fill="#d3dfeb" font-size="20">frame-index.jsonl</text>
+    <text x="28" y="122" fill="#d3dfeb" font-size="20">retained-states.json</text>
+    <text x="28" y="156" fill="#d3dfeb" font-size="20">transcript.json</text>
+    <text x="28" y="190" fill="#d3dfeb" font-size="20">receipt.json</text>
+    <path d="M30 242h246" stroke="#243b50" stroke-width="2"/>
+    <text x="28" y="272" fill="#849bb1" font-size="17">SHA-256 manifest</text>
+  </g>
+  <path d="M806 420h58" stroke="#58e4c2" stroke-width="5" stroke-linecap="round"/><path d="m853 407 16 13-16 13" fill="none" stroke="#58e4c2" stroke-width="5"/>
+  <g transform="translate(888 270)" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+    <rect width="248" height="300" rx="18" fill="#0d1b2a" stroke="#58e4c2"/>
+    <text x="28" y="45" fill="#58e4c2" font-size="22" font-weight="700">3 · VERIFY</text>
+    <circle cx="124" cy="133" r="52" fill="#12392f" stroke="#58e4c2" stroke-width="3"/>
+    <path d="m97 133 18 18 37-43" fill="none" stroke="#8cf4d9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="124" y="220" text-anchor="middle" fill="#f6fbff" font-size="23" font-weight="750">VERIFIED</text>
+    <text x="124" y="255" text-anchor="middle" fill="#849bb1" font-size="16">extras fail closed</text>
+  </g>
+  <text x="64" y="625" fill="#72899f" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="18">Evidence is not instruction · Hidden implementation remains unknown · Clean-room reconstruction</text>
+</svg>

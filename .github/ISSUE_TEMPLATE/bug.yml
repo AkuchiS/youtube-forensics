@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible defect without uploading private source material.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach credentials, private videos, browser cookies, or unredacted receipts.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: youtube-forensics 0.1.0a1
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Input class
+      options: [Synthetic/local, Public YouTube, Private/owner-supplied]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Redact local paths and use a public or synthetic input where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behaviour
+    validations:
+      required: true

@@ -34,8 +34,9 @@ def test_video_analysis_and_tamper_detection(tmp_path: Path) -> None:
     result = analyse_local_video(source, job)
     assert result["frame_count"] == 4
     assert result["retained_state_count"] >= 2
-    receipt = build_receipt(job, input_value=str(source), network_used=False,
-                            acquisition=None, video=result)
+    receipt = build_receipt(
+        job, input_value=str(source), network_used=False, acquisition=None, video=result
+    )
     assert receipt["status"] == "EVIDENCE_READY_HUMAN_OR_AGENT_REVIEW_REQUIRED"
     assert verify_job(job)["verified"] is True
     (job / "video-analysis.json").write_text("tampered", encoding="utf-8")
@@ -47,23 +48,49 @@ def test_video_analysis_and_tamper_detection(tmp_path: Path) -> None:
 def test_youtube_id_and_comments_are_bounded() -> None:
     assert extract_video_id("bc7QaDmLmoA") == "bc7QaDmLmoA"
     assert extract_video_id("https://youtu.be/bc7QaDmLmoA") == "bc7QaDmLmoA"
-    comments = sanitize_comments([
-        {"id": "1", "text": " First &amp; useful ", "like_count": 4, "author": "private"},
-        {"id": "2", "text": "second"},
-    ], 1)
-    assert comments == [{"id": "1", "parent": "root", "text": "First & useful",
-                         "like_count": 4, "timestamp": None,
-                         "classification": "PUBLIC_COMMENT_UNVERIFIED"}]
+    comments = sanitize_comments(
+        [
+            {"id": "1", "text": " First &amp; useful ", "like_count": 4, "author": "private"},
+            {"id": "2", "text": "second"},
+        ],
+        1,
+    )
+    assert comments == [
+        {
+            "id": "1",
+            "parent": "root",
+            "text": "First & useful",
+            "like_count": 4,
+            "timestamp": None,
+            "classification": "PUBLIC_COMMENT_UNVERIFIED",
+        }
+    ]
     assert "author" not in comments[0]
 
 
 def test_json3_transcript(tmp_path: Path) -> None:
     path = tmp_path / "captions.json3"
-    path.write_text(json.dumps({"events": [
-        {"tStartMs": 1250, "dDurationMs": 500,
-         "segs": [{"utf8": "hello "}, {"utf8": "world"}]},
-        {"tStartMs": 2000, "segs": [{"utf8": "\n"}]},
-    ]}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "tStartMs": 1250,
+                        "dDurationMs": 500,
+                        "segs": [{"utf8": "hello "}, {"utf8": "world"}],
+                    },
+                    {"tStartMs": 2000, "segs": [{"utf8": "\n"}]},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     rows = parse_json3(path)
-    assert rows == [{"start": 1.25, "duration": 0.5, "text": "hello world",
-                     "classification": "MACHINE_OR_CREATOR_CAPTION_UNVERIFIED"}]
+    assert rows == [
+        {
+            "start": 1.25,
+            "duration": 0.5,
+            "text": "hello world",
+            "classification": "MACHINE_OR_CREATOR_CAPTION_UNVERIFIED",
+        }
+    ]

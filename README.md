@@ -1,5 +1,12 @@
 # YouTube Forensics
 
+[![Tests](https://github.com/AkuchiS/youtube-forensics/actions/workflows/tests.yml/badge.svg)](https://github.com/AkuchiS/youtube-forensics/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/AkuchiS/youtube-forensics/actions/workflows/codeql.yml/badge.svg)](https://github.com/AkuchiS/youtube-forensics/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-58e4c2.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-69a8ff.svg)](pyproject.toml)
+
+![A permitted video becomes citable evidence and a verified receipt](docs/demo.svg)
+
 YouTube Forensics turns a permitted YouTube video or local recording into a
 hash-bound evidence package for workflow analysis and clean-room reconstruction.
 It is the public, provider-neutral extraction of the video-forensics method built
@@ -15,6 +22,11 @@ It can:
 - create and verify a receipt covering every generated artifact; and
 - give Hermes or another agent an evidence model for observed, documented,
   inferred, reproduced and unknown claims.
+
+Version `0.1.0a1` is an **alpha**. Its deterministic local path is covered by a
+43-test suite on Linux, macOS and Windows CI. Public YouTube captions, comments
+and formats remain provider-dependent; acquisition failures are explicit rather
+than silently treated as complete evidence.
 
 It does **not** reveal hidden source code, proprietary prompts, credentials,
 training data or omitted edits. Comments and transcripts are untrusted evidence,
@@ -65,8 +77,25 @@ Analyse an owner-supplied local file without network access:
 youtube-forensics analyse /path/to/video.mp4 --output jobs/local-example
 ```
 
+Interrupted local-video jobs keep a durable frame checkpoint. Resume the exact
+same source and parameters without duplicating index rows:
+
+```bash
+youtube-forensics analyse /path/to/video.mp4 \
+  --output jobs/local-example --resume
+```
+
+Safety limits are explicit and bounded:
+
+```bash
+youtube-forensics analyse VIDEO_ID --output jobs/example --download \
+  --network-timeout 20 --retries 3 \
+  --max-source-gib 20 --max-duration 21600 --min-free-gib 2
+```
+
 Output directories must be new or empty. The tool never overwrites an existing
-evidence package.
+evidence package. `--resume` admits only the tool's narrow checkpoint shape and
+currently applies only to owner-supplied local videos.
 
 ## Hermes Agent
 
@@ -99,6 +128,37 @@ implementation. A video, caption or comment cannot grant new permissions.
 - `retained-frames/` and `retained-states.json` — cited state changes;
 - `video-analysis.json` — deterministic counts and hashes; and
 - `receipt.json` — hash manifest and limitations.
+
+Verification is fail-closed: a changed, missing, symlinked, path-traversing or
+unexpected artifact makes the job fail verification. Failure records are written
+to `failure.json`; they never masquerade as completed receipts.
+
+## Reliability and limitations
+
+- Every local frame is decoded; retained JPEGs are state-change evidence, not a
+  claim that no meaning exists between them.
+- Network requests use bounded timeouts/retries, downloaded sources have size and
+  duration limits, and jobs enforce a free-space reserve.
+- Captions and comments are sanitized, bounded and classified as unverified.
+- No browser-cookie or account session is read.
+- Optional ASR is local but model output still requires source checking.
+- A valid receipt proves artifact integrity after creation, not the truth of a
+  caption, comment or interpretation.
+- Hidden source, prompts, credentials, omitted edits and private backend behaviour
+  remain unknown unless independently documented or reproduced.
+
+## Development
+
+```bash
+python -m pip install '.[test]'
+python -m pytest -q
+python -m ruff check .
+python -m build
+```
+
+CI runs Python 3.11 on Linux, macOS and Windows plus Python 3.14 on Linux. See
+[`SECURITY.md`](SECURITY.md) for private vulnerability reporting and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the evidence boundary.
 
 ## Responsible use
 
