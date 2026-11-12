@@ -36,6 +36,12 @@ For an isolated install with `uv`:
 uv tool install --from . youtube-forensics
 ```
 
+Install the released source directly from GitHub:
+
+```bash
+uv tool install 'git+https://github.com/AkuchiS/youtube-forensics.git'
+```
+
 ## Use
 
 Metadata, comments and captions only:
@@ -69,6 +75,17 @@ that directory into the active profile's `skills/research/` directory or add thi
 repository's `skills/` directory to `skills.external_dirs` in Hermes configuration.
 Start a new session or allow the skill catalog cache to refresh, then ask Hermes to
 use `youtube-forensics` on a named URL and reconstruction question.
+
+Hermes users can also install the public skill directly:
+
+```bash
+hermes skills install \
+  'https://raw.githubusercontent.com/AkuchiS/youtube-forensics/main/skills/research/youtube-forensics/SKILL.md' \
+  --category research --yes
+```
+
+The CLI and skill are separate on purpose: the CLI produces deterministic evidence;
+Hermes interprets it under the documented claim and permission boundaries.
 
 The skill deliberately keeps collection separate from interpretation and
 implementation. A video, caption or comment cannot grant new permissions.
