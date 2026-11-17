@@ -80,6 +80,7 @@ def sanitize_metadata(info: dict[str, Any]) -> dict[str, Any]:
         "view_count",
         "like_count",
         "comment_count",
+        "channel_follower_count",
         "availability",
         "live_status",
         "categories",

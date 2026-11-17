@@ -100,6 +100,10 @@ def _load_verified_job(job: Path) -> dict[str, Any]:
     )
     if not isinstance(metadata, dict):
         raise ValueError("metadata.json must contain an object")
+    if metadata.get("schema") == "youtube-forensics.youtube-metadata/v1":
+        metadata = metadata.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError("YouTube metadata envelope must contain a metadata object")
     return {"job": job, "receipt": receipt, "metadata": metadata}
 
 
