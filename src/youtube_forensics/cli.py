@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import __version__
 from .core import analyse_local_video, atomic_json, build_receipt, prepare_output, verify_job
+from .intelligence import build_feedback, build_intelligence
 from .youtube import canonical_youtube_url, collect_youtube, transcribe_local
 
 
@@ -155,6 +156,48 @@ def verify(args: argparse.Namespace) -> int:
     return 0 if result["verified"] else 2
 
 
+def intelligence(args: argparse.Namespace) -> int:
+    result = build_intelligence(
+        [Path(path) for path in args.evidence],
+        platform=args.platform,
+        proposed_caption=args.caption,
+        proposed_tags=args.hashtag,
+    )
+    output = Path(args.output).expanduser()
+    if output.exists() or output.is_symlink():
+        raise ValueError("Intelligence output must not already exist")
+    atomic_json(output, result)
+    print(json.dumps({"output": args.output, "artifact_sha256": result["artifact_sha256"]}))
+    return 0
+
+
+def feedback(args: argparse.Namespace) -> int:
+    source = Path(args.intelligence).expanduser()
+    if not source.is_file() or source.is_symlink():
+        raise ValueError("Intelligence input must be a regular non-symlink file")
+    if source.stat().st_size > 5 * 1024 * 1024:
+        raise ValueError("Intelligence input exceeds 5 MiB")
+    value = json.loads(source.read_text(encoding="utf-8"))
+    metrics = {
+        key: value
+        for key, value in {
+            "view_count": args.views,
+            "like_count": args.likes,
+            "comment_count": args.comments,
+            "share_count": args.shares,
+            "repost_count": args.reposts,
+        }.items()
+        if value is not None
+    }
+    result = build_feedback(value, metrics=metrics)
+    output = Path(args.output).expanduser()
+    if output.exists() or output.is_symlink():
+        raise ValueError("Feedback output must not already exist")
+    atomic_json(output, result)
+    print(json.dumps({"output": args.output, "feedback_sha256": result["feedback_sha256"]}))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="youtube-forensics")
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -217,6 +260,33 @@ def parser() -> argparse.ArgumentParser:
     check = commands.add_parser("verify", help="Recompute all receipt hashes")
     check.add_argument("output", help="Evidence directory containing receipt.json")
     check.set_defaults(func=verify)
+    intel = commands.add_parser(
+        "intelligence", help="Create an ARGUS Amplify intelligence artifact"
+    )
+    intel.add_argument(
+        "--evidence",
+        action="append",
+        required=True,
+        help="Verified evidence package; repeat to build a corpus",
+    )
+    intel.add_argument("--platform", required=True, help="Target social platform")
+    intel.add_argument("--caption", default="", help="Proposed caption to assess")
+    intel.add_argument(
+        "--hashtag", action="append", default=[], help="Proposed hashtag; repeat as needed"
+    )
+    intel.add_argument("--output", required=True, help="New intelligence JSON artifact")
+    intel.set_defaults(func=intelligence)
+    learn = commands.add_parser(
+        "feedback", help="Bind observed performance to an ARGUS intelligence artifact"
+    )
+    learn.add_argument("intelligence", help="Existing ARGUS intelligence JSON")
+    learn.add_argument("--views", type=int)
+    learn.add_argument("--likes", type=int)
+    learn.add_argument("--comments", type=int)
+    learn.add_argument("--shares", type=int)
+    learn.add_argument("--reposts", type=int)
+    learn.add_argument("--output", required=True, help="New append-only feedback JSON artifact")
+    learn.set_defaults(func=feedback)
     return root
 
 

@@ -1,7 +1,7 @@
 ---
 name: youtube-forensics
 description: Analyse YouTube videos into cited reconstruction evidence.
-version: 0.1.0
+version: 0.2.0
 author: Jay Christian, Hermes Agent
 license: MIT
 platforms:
@@ -87,6 +87,12 @@ Report the access limitation and use an owner-supplied local file where appropri
 8. **Deliver an evidence-led report.** Include the question, source hash, observed timeline,
    transcript/comment findings, upstream sources, classifications, reproduced tests, unknowns,
    costs and next acceptance step. Completion: another reviewer can trace every claim.
+9. **Produce ARGUS intelligence when requested.** Only after every input verifies, run
+   `youtube-forensics intelligence` against one or more evidence directories. Keep its output
+   outside the immutable evidence directories. Treat scores, tag suggestions and timing advice as
+   reviewable interpretations, not facts or publishing authority. If later performance metrics are
+   available, use `youtube-forensics feedback` to append a hash-bound observation rather than
+   editing the source receipt or recommendation.
 
 ## Pitfalls
 
@@ -105,3 +111,5 @@ Report the access limitation and use an owner-supplied local file where appropri
 - Every observed claim cites source hash plus timestamp/frame.
 - Every reproduced claim cites a passing test receipt.
 - No secret, cookie, private Brain material, downloaded model or source video enters a public commit.
+- ARGUS intelligence cites the exact evidence receipt and states missing metrics as unknown.
+- Performance feedback cites the exact intelligence hash and never rewrites source evidence.

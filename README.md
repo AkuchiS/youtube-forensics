@@ -21,9 +21,12 @@ It can:
 - optionally run local faster-whisper ASR when captions are unavailable;
 - create and verify a receipt covering every generated artifact; and
 - give Hermes or another agent an evidence model for observed, documented,
-  inferred, reproduced and unknown claims.
+  inferred, reproduced and unknown claims;
+- produce a separately hash-bound ARGUS intelligence artifact with platform-rule
+  assessment, observed hashtag/reach signals and suggested tags; and
+- append later performance observations without rewriting the original evidence.
 
-Version `0.1.0a1` is an **alpha**. Its deterministic local path is covered by a
+Version `0.2.0a1` on `main` is an **alpha**. Its deterministic local path is covered by a
 cross-platform test suite on Linux, macOS and Windows CI. Public YouTube captions, comments
 and formats remain provider-dependent; acquisition failures are explicit rather
 than silently treated as complete evidence.
@@ -53,6 +56,10 @@ Install the released source directly from GitHub:
 ```bash
 uv tool install 'git+https://github.com/AkuchiS/youtube-forensics.git@v0.1.0-alpha.1'
 ```
+
+The immutable `v0.1.0-alpha.1` tag remains the evidence-only release. ARGUS
+intelligence is currently available from reviewed `main` until its own prerelease is
+qualified and tagged.
 
 ## Use
 
@@ -135,6 +142,32 @@ implementation. A video, caption or comment cannot grant new permissions.
 Verification is fail-closed: a changed, missing, symlinked, path-traversing or
 unexpected artifact makes the job fail verification. Failure records are written
 to `failure.json`; they never masquerade as completed receipts.
+
+## ARGUS intelligence and Amplify outcomes
+
+The evidence package remains immutable. Build a separate intelligence artifact from
+one or more verified packages:
+
+```bash
+youtube-forensics intelligence \
+  --evidence jobs/example \
+  --platform youtube \
+  --caption 'Build private local AI tools and follow for more.' \
+  --hashtag localai --hashtag privacy --hashtag opensource \
+  --output intelligence.json
+```
+
+After publication metrics are observed, bind them to the exact recommendation without
+altering its source evidence:
+
+```bash
+youtube-forensics feedback intelligence.json \
+  --views 2000 --likes 150 --comments 30 \
+  --output performance-feedback.json
+```
+
+These artifacts implement ARGUS's Amplify-compatible outcome contract. They are
+recommendations and observations, not authority to spend money or publish content.
 
 ## Reliability and limitations
 
