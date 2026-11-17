@@ -11,6 +11,7 @@ from pathlib import Path
 from . import __version__
 from .core import analyse_local_video, atomic_json, build_receipt, prepare_output, verify_job
 from .intelligence import build_feedback, build_intelligence
+from .opportunities import build_opportunity_radar
 from .youtube import canonical_youtube_url, collect_youtube, transcribe_local
 
 
@@ -198,6 +199,20 @@ def feedback(args: argparse.Namespace) -> int:
     return 0
 
 
+def opportunities(args: argparse.Namespace) -> int:
+    result = build_opportunity_radar(
+        [Path(path) for path in args.evidence],
+        minimum_channel_samples=args.minimum_channel_samples,
+        minimum_topic_channels=args.minimum_topic_channels,
+    )
+    output = Path(args.output).expanduser()
+    if output.exists() or output.is_symlink():
+        raise ValueError("Opportunity output must not already exist")
+    atomic_json(output, result)
+    print(json.dumps({"output": args.output, "artifact_sha256": result["artifact_sha256"]}))
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="youtube-forensics")
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -287,6 +302,29 @@ def parser() -> argparse.ArgumentParser:
     learn.add_argument("--reposts", type=int)
     learn.add_argument("--output", required=True, help="New append-only feedback JSON artifact")
     learn.set_defaults(func=feedback)
+    radar = commands.add_parser(
+        "opportunities", help="Rank channel-relative outliers and cross-channel topics"
+    )
+    radar.add_argument(
+        "--evidence",
+        action="append",
+        required=True,
+        help="Verified evidence package; repeat to build a comparison corpus",
+    )
+    radar.add_argument(
+        "--minimum-channel-samples",
+        type=int,
+        default=3,
+        help="Minimum videos from one channel before outlier scoring",
+    )
+    radar.add_argument(
+        "--minimum-topic-channels",
+        type=int,
+        default=2,
+        help="Minimum independent channels before surfacing a topic candidate",
+    )
+    radar.add_argument("--output", required=True, help="New opportunity-radar JSON artifact")
+    radar.set_defaults(func=opportunities)
     return root
 
 

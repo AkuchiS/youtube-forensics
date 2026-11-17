@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "youtube-forensics"
-version = "0.2.0a1"
+version = "0.3.0a1"
 description = "Turn permitted public media into hash-bound evidence and ARGUS intelligence."
 readme = "README.md"
 requires-python = ">=3.11"

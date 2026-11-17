@@ -24,9 +24,11 @@ It can:
   inferred, reproduced and unknown claims;
 - produce a separately hash-bound ARGUS intelligence artifact with platform-rule
   assessment, observed hashtag/reach signals and suggested tags; and
-- append later performance observations without rewriting the original evidence.
+- append later performance observations without rewriting the original evidence; and
+- rank channel-relative outlier videos and cross-channel topic candidates without
+  inventing missing views, subscribers or market demand.
 
-Version `0.2.0a1` on `main` is an **alpha**. Its deterministic local path is covered by a
+Version `0.3.0a1` on `main` is an **alpha**. Its deterministic local path is covered by a
 cross-platform test suite on Linux, macOS and Windows CI. Public YouTube captions, comments
 and formats remain provider-dependent; acquisition failures are explicit rather
 than silently treated as complete evidence.
@@ -168,6 +170,32 @@ youtube-forensics feedback intelligence.json \
 
 These artifacts implement ARGUS's Amplify-compatible outcome contract. They are
 recommendations and observations, not authority to spend money or publish content.
+
+## ARGUS Opportunity Radar
+
+Build a NexLev-style outlier and niche-research artifact from a corpus of verified
+ARGUS evidence packages:
+
+```bash
+youtube-forensics opportunities \
+  --evidence jobs/channel-a-video-1 \
+  --evidence jobs/channel-a-video-2 \
+  --evidence jobs/channel-a-video-3 \
+  --evidence jobs/channel-b-video-1 \
+  --evidence jobs/channel-b-video-2 \
+  --evidence jobs/channel-b-video-3 \
+  --output opportunity-radar.json
+```
+
+The radar uses a leave-one-out median of observed views from the same channel, so
+one viral video does not define its own baseline. It requires at least three videos
+per channel before assigning an outlier multiplier and at least two independent
+channels before surfacing a topic candidate. Subscriber-normalized reach is reported
+when the source exposed a follower count; missing fields remain explicitly unknown.
+
+This is the deterministic ARGUS analysis layer. It does not bundle API credentials,
+scrape behind logins, or claim that an observed topic is profitable. Optional collectors
+and dashboards can consume the artifact without changing its evidence or formula.
 
 ## Reliability and limitations
 
